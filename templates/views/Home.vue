@@ -35,7 +35,7 @@
         </div>
       </div>
 
-      <Table v-else :words="words" :quiz="quiz" @needMore="needMore">
+      <Table v-else :words="words" :quiz="quiz" :currentTab="currentTab" @needMore="needMore">
       </Table>
 
       <div class="p-2 border-top d-flex flex-row justify-content-between">

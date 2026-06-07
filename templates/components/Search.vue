@@ -27,7 +27,80 @@
             </p>
             <p v-html="result.paraphrase"></p>
 
-            <div v-for="(dict, i) in dictionaries" :key="i">
+            <!-- Word Analysis (root/affix breakdown) -->
+            <div v-if="wordAnalysis && wordAnalysis.parts" class="word-analysis mt-2">
+              <div class="parts d-flex flex-wrap align-items-center">
+                <template v-for="(p, i) in wordAnalysis.parts">
+                  <span v-if="i > 0" :key="'sep-'+i" class="sep mx-1">+</span>
+                  <span :key="i" :class="'part ' + p.type">
+                    <span class="text">{{ p.text || '' }}</span>
+                    <span class="meaning">{{ p.meaning || '' }}</span>
+                  </span>
+                </template>
+              </div>
+            </div>
+
+            <!-- Rich Data from remix-words-funny -->
+            <div v-if="richData" class="rich-data mt-3">
+              <!-- Book name -->
+              <p v-if="richData.bookName" class="text-secondary small mb-2">
+                {{ richData.bookName }}
+              </p>
+              <!-- Pronounce + Remember -->
+              <p v-if="richData.remember" class="small text-muted mb-2">
+                <em>{{ richData.remember }}</em>
+              </p>
+
+              <!-- Translations -->
+              <div v-if="richData.translations && richData.translations.length" class="rich-section">
+                <h6 class="rich-heading">翻译</h6>
+                <div v-for="(t, i) in richData.translations" :key="'tr-'+i" class="rich-item mb-2">
+                  <span class="badge bg-primary me-1">{{ t.pos }}</span>
+                  <span>{{ t.cn }}</span>
+                  <small class="text-secondary d-block">{{ t.en }}</small>
+                </div>
+              </div>
+
+              <!-- Phrases -->
+              <div v-if="richData.phrases && richData.phrases.length" class="rich-section">
+                <h6 class="rich-heading">短语</h6>
+                <div v-for="(p, i) in richData.phrases" :key="'ph-'+i" class="rich-item mb-1">
+                  <div>{{ p.content }}</div>
+                  <small class="text-secondary">{{ p.cn }}</small>
+                </div>
+              </div>
+
+              <!-- Sentences -->
+              <div v-if="richData.sentences && richData.sentences.length" class="rich-section">
+                <h6 class="rich-heading">例句</h6>
+                <div v-for="(s, i) in richData.sentences" :key="'se-'+i" class="rich-item mb-1">
+                  <div>{{ s.content }}</div>
+                  <small class="text-secondary">{{ s.cn }}</small>
+                </div>
+              </div>
+
+              <!-- Synonyms -->
+              <div v-if="richData.synonyms && richData.synonyms.length" class="rich-section">
+                <h6 class="rich-heading">同义词</h6>
+                <div v-for="(s, i) in richData.synonyms" :key="'sy-'+i" class="rich-item mb-1">
+                  <span class="badge bg-secondary me-1">{{ s.pos }}</span>
+                  <span>{{ s.content }}</span>
+                  <span class="text-secondary ms-1">{{ s.cn }}</span>
+                </div>
+              </div>
+
+              <!-- Cognates -->
+              <div v-if="richData.cognates && richData.cognates.length" class="rich-section">
+                <h6 class="rich-heading">同根词</h6>
+                <div v-for="(c, i) in richData.cognates" :key="'co-'+i" class="rich-item mb-1">
+                  <span class="badge bg-secondary me-1">{{ c.pos }}</span>
+                  <span>{{ c.content }}</span>
+                  <span class="text-secondary ms-1">{{ c.cn }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-for="(dict, i) in dictionaries" :key="i" class="mt-2">
               <a @click="clickDictionary" href="#" :index="i"> {{ dict.name }} </a>
             </div>
           </div>
@@ -61,6 +134,8 @@ export default {
       dictionaries: [],
 
       result: {},
+      wordAnalysis: null,
+      richData: null,
     };
   },
 
@@ -77,10 +152,12 @@ export default {
 
     document.addEventListener('keyup', this.onKeyUp);
     this.$parent.$on('search', this.search);
+    ipcRenderer.on('showDetail', (_, word) => this.search(word));
   },
 
   destroyed() {
     document.removeEventListener('keyup', this.onKeyUp);
+    ipcRenderer.removeAllListeners('showDetail');
   },
 
   methods: {
@@ -107,6 +184,16 @@ export default {
       if (res) {
         this.result = res;
         this.modal.show();
+
+        // Fetch word analysis (root/affix breakdown)
+        try {
+          this.wordAnalysis = await ipcRenderer.invoke('getWordAnalysis', word);
+        } catch { this.wordAnalysis = null; }
+
+        // Fetch rich dictionary data from remix-words-funny
+        try {
+          this.richData = await ipcRenderer.invoke('getWordRichData', word);
+        } catch { this.richData = null; }
       }
     },
 
@@ -118,7 +205,22 @@ export default {
     pronounce() {
       const word = this.result.word;
       const c = word[0].toUpperCase();
-      new Audio(`../assets/audio/${c}/${word}.mp3`).play();
+      const audio = new Audio(`../assets/audio/${c}/${word}.mp3`);
+      audio.onerror = () => {
+        const u = new SpeechSynthesisUtterance(word);
+        u.lang = 'en-US';
+        u.rate = 0.8;
+        u.volume = 1;
+        speechSynthesis.speak(u);
+      };
+      // Use AudioContext GainNode to boost volume beyond 100%
+      const actx = new AudioContext();
+      const src = actx.createMediaElementSource(audio);
+      const gain = actx.createGain();
+      gain.gain.value = 1.5;
+      src.connect(gain);
+      gain.connect(actx.destination);
+      audio.play();
     },
 
     clickDictionary(e) {
@@ -220,5 +322,58 @@ export default {
 
 .pronounce:hover {
   color: #212529;
+}
+
+/* Word Analysis */
+.word-analysis {
+  font-size: 0.9rem;
+}
+.word-analysis .part {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f0f4f8;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.word-analysis .part .text {
+  font-weight: 600;
+  color: #2c3e50;
+}
+.word-analysis .part .meaning {
+  font-size: 0.75rem;
+  color: #7f8c8d;
+}
+.word-analysis .sep {
+  font-weight: bold;
+  color: #95a5a6;
+}
+
+/* Rich Data Sections */
+.rich-data {
+  border-top: 1px solid #e9ecef;
+  padding-top: 0.5rem;
+}
+.rich-section {
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+  padding-right: 0.25rem;
+}
+.rich-heading {
+  color: #495057;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 0.2rem;
+  margin-bottom: 0.4rem;
+}
+.rich-item {
+  font-size: 0.85rem;
+}
+
+/* Modal body scroll */
+.modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 </style>

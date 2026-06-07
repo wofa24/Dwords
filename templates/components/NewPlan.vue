@@ -46,7 +46,7 @@
               </div>
             </div>
 
-            <div class="mb-2">
+            <div class="mb-2" v-if="dictionary !== 'rich'">
               <span class="form-label">Order</span>
               <select class="form-select form-select-sm" v-model="order" required>
                 <option value="frq">Frequency</option>
@@ -115,6 +115,9 @@ export default {
 
       creating: false,
       error: '',
+
+      richTags: {},
+      richTagsLoaded: false,
     };
   },
 
@@ -140,6 +143,15 @@ export default {
     async fetchSettings() {
       const settings = await ipcRenderer.invoke('getSettings', 'dictionary');
       this.dictionary = settings.dictionary;
+    },
+
+    async loadRichTags() {
+      const books = await ipcRenderer.invoke('getBookList');
+      this.richTags = {};
+      for (const b of books) {
+        this.richTags[b.slug] = `${b.name} (${b.word_count} words)`;
+      }
+      this.richTagsLoaded = true;
     },
 
     async clickOpen() {
@@ -200,6 +212,9 @@ export default {
 
   computed: {
     tags() {
+      if (this.dictionary === 'rich') {
+        return this.richTags;
+      }
       const dict = DICTIONARIES[this.dictionary];
       if (dict) {
         return dict.tags;
@@ -217,6 +232,9 @@ export default {
     dictionary() {
       this.invalidDict = '';
       this.tag = undefined;
+      if (this.dictionary === 'rich' && !this.richTagsLoaded) {
+        this.loadRichTags();
+      }
     },
 
     tag() {

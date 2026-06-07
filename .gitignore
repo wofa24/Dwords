@@ -1,5 +1,5 @@
 node_modules/
-renderer/
 main/
 .DS_Store
 dist/
+assets/data/rich_dict.db

@@ -2,7 +2,7 @@
   <div class="d-flex flex-column" style="flex: 1; overflow-y: auto">
     <table class="table m-0 border-end no-select">
       <thead>
-        <tr> <th ref="wordHead" id="wordHead" :style="wordStyle">Word</th> <th>Paraphrase</th> </tr>
+        <tr> <th ref="wordHead" id="wordHead" :style="wordStyle">Word</th> <th>Paraphrase</th> <th v-if="extraCol">{{ extraCol }}</th> </tr>
       </thead>
     </table>
 
@@ -19,6 +19,7 @@
                 click to show the paraphrase
               </span>
             </td>
+            <td v-if="extraCol">{{ extraValue(word) }}</td>
           </tr>
         </tbody>
       </table>
@@ -36,7 +37,7 @@ const { ipcRenderer, shell } = window.require("electron");
 export default {
   name: 'Table',
   props: {
-    words: Array, quiz: Boolean,
+    words: Array, quiz: Boolean, currentTab: String,
   },
 
   components: { ContextMenu },
@@ -120,6 +121,14 @@ export default {
         this.$emit('needMore');
       }
     },
+
+    extraValue(word) {
+      if (this.currentTab === 'Current') return word.appear_count || 0;
+      if (this.currentTab === 'Memorized' && word.memorized_at) {
+        return new Date(word.memorized_at).toLocaleDateString();
+      }
+      return '';
+    },
   },
 
   computed: {
@@ -127,8 +136,14 @@ export default {
       return {
         width: this.wordWidth + 'px',
       };
-    }
-  }
+    },
+
+    extraCol() {
+      if (this.currentTab === 'Current') return 'Count';
+      if (this.currentTab === 'Memorized') return 'Memorized';
+      return null;
+    },
+  },
 };
 </script>
 

@@ -2,7 +2,7 @@
   <div class="d-flex flex-column danmaku" id="widget" ref="widget" :class="hidden">
     <div class="align-self-start word"
       :style="wordStyle"
-      :class="color || defaultColor"
+      :class="[color || defaultColor, { deepened: isDeepened }]"
       :activated="activated"
       @mousedown="mouseDownWord"
     >
@@ -12,11 +12,28 @@
 
     <div class="align-self-start card mt-2" style="width: 18rem;" v-if="activated">
       <div class="card-body">
-        <div v-if="phonetic">
-          [{{ phonetic }}]
-          <a @click="pronounce" class="bi bi-volume-up pronounce" href="#"></a>
+        <div>
+          <span class="fw-bold me-2">{{ word }}</span>
+          <span v-if="phonetic">
+            [{{ phonetic }}]
+            <a @click="pronounce" class="bi bi-volume-up pronounce" href="#"></a>
+          </span>
         </div>
         <p v-html="paraphrase"></p>
+
+        <!-- Word Analysis (root/affix breakdown) -->
+        <div v-if="wordAnalysis && wordAnalysis.parts" class="word-analysis mt-2">
+          <div class="parts d-flex flex-wrap align-items-center">
+            <template v-for="(p, i) in wordAnalysis.parts">
+              <span v-if="i > 0" :key="'sep-'+i" class="sep mx-1">+</span>
+              <span :key="i" :class="'part ' + p.type">
+                <span class="text">{{ p.text || '' }}</span>
+                <span class="meaning">{{ p.meaning || '' }}</span>
+              </span>
+            </template>
+          </div>
+        </div>
+
         <div v-for="(dict, i) in dictionaries" :key="i">
           <a @click="clickDictionary" href="#" :index="i"> {{ dict.name }} </a>
         </div>
@@ -35,6 +52,11 @@
           </button>
           <button type="button" @click="toggleParaphrase" class="col m-1 btn btn-outline-secondary btn-sm">
             {{ isParaphrase ? 'Hide' : 'Show'}} paraphrase
+          </button>
+        </div>
+        <div class="d-flex">
+          <button type="button" @click="showDetail" class="col m-1 btn btn-outline-secondary btn-sm">
+            Detail
           </button>
         </div>
       </div>
@@ -76,6 +98,8 @@ export default {
       wordSize: '15px',
       disableClick: false,
       defaultShowParaphrase: false,
+      wordAnalysis: null,
+      appearCount: Number(urlParams.get('appear_count') || 0),
     };
   },
 
@@ -84,6 +108,7 @@ export default {
     document.addEventListener('mouseup', this.mouseUp);
 
     this.fetchSettings();
+    this.fetchWordAnalysis();
     ipcRenderer.on('refreshDanmaku', this.fetchSettings);
     ipcRenderer.on('pause', () => this.hidden = 'hidden');
     ipcRenderer.on('deactivate', () => this.activated = false);
@@ -116,6 +141,12 @@ export default {
       this.disableClick = settings.disableClick;
       this.defaultShowParaphrase = settings.defaultShowParaphrase;
       this.wordSize = settings.danmakuSize + 'px';
+    },
+
+    async fetchWordAnalysis() {
+      try {
+        this.wordAnalysis = await ipcRenderer.invoke('getWordAnalysis', this.word);
+      } catch { this.wordAnalysis = null; }
     },
 
     mouseDownWord(e) {
@@ -165,7 +196,22 @@ export default {
 
     pronounce() {
       const c = this.word[0].toUpperCase();
-      new Audio(`../assets/audio/${c}/${this.word}.mp3`).play();
+      const audio = new Audio(`../assets/audio/${c}/${this.word}.mp3`);
+      audio.onerror = () => {
+        const u = new SpeechSynthesisUtterance(this.word);
+        u.lang = 'en-US';
+        u.rate = 0.8;
+        u.volume = 1;
+        speechSynthesis.speak(u);
+      };
+      // Use AudioContext GainNode to boost volume beyond 100%
+      const actx = new AudioContext();
+      const src = actx.createMediaElementSource(audio);
+      const gain = actx.createGain();
+      gain.gain.value = 1.5;
+      src.connect(gain);
+      gain.connect(actx.destination);
+      audio.play();
     },
 
     clickDictionary(e) {
@@ -182,6 +228,10 @@ export default {
       ipcRenderer.invoke('updateWord', this.planID, this.word, {color: this.color});
     },
 
+    showDetail() {
+      ipcRenderer.invoke('showWordDetail', this.word);
+    },
+
     updateSize() {
       const widget = this.$refs.widget;
       ipcRenderer.send('setWinSize', widget.clientWidth + 10, widget.clientHeight);
@@ -194,6 +244,10 @@ export default {
         '--danmaku-opacity': this.opacity,
         '--word-size': this.wordSize,
       };
+    },
+
+    isDeepened() {
+      return this.appearCount >= 10;
     },
 
     isParaphrase() {
@@ -233,6 +287,10 @@ export default {
 
 .danmaku .word:hover {
   opacity: 1;
+}
+
+.danmaku .word.deepened {
+  border: 2px solid rgba(0, 0, 0, 0.45);
 }
 
 .danmaku .card {
@@ -299,5 +357,30 @@ input.radio:checked + label.radio.dark {
   border-width: 1px;
   border-color: rgba(0, 0, 0, 0.125);
   color: #000000;
+}
+
+/* Word Analysis */
+.word-analysis {
+  font-size: 0.85rem;
+}
+.word-analysis .part {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f0f4f8;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.word-analysis .part .text {
+  font-weight: 600;
+  color: #2c3e50;
+}
+.word-analysis .part .meaning {
+  font-size: 0.7rem;
+  color: #7f8c8d;
+}
+.word-analysis .sep {
+  font-weight: bold;
+  color: #95a5a6;
 }
 </style>

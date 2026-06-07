@@ -29,6 +29,12 @@ exports.DICTIONARIES = {
             ielts: "雅思",
         }
     },
+    'rich': {
+        name: '教材词库',
+        table: 'word_master',
+        field: 'trans_cn',
+        tags: {},  // dynamically loaded from rich_dict.db via getBookList
+    },
 };
 
 exports.DATA_DIR = path.join(os.homedir(), '.DWords2');
